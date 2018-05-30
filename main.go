@@ -1,68 +1,69 @@
 package main
 
 import (
-	"os"
 	"bufio"
-	"strings"
-	"os/exec"
-	"strconv"
 	"log"
-	"time"
+	"os"
+	"os/exec"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
+	"time"
+
+	"github.com/fsnotify/fsnotify"
 	"github.com/influxdata/influxdb/client/v2"
 	"github.com/spf13/viper"
-	"github.com/fsnotify/fsnotify"
 )
-
 
 const (
-	CONFIG_FILE = "config"
-	CONFIG_PATH = "/home/bapung/Documents/+Project/WiFiSSIDMonitor"
+	//ConfigFile name without extension
+	ConfigFile = "config"
+	//ConfigPath absolute
+	ConfigPath = "/home/bapung/Documents/+Project/WiFiSSIDMonitor"
 )
 
-//Wifi Information Struct
+// WirelessNetwork defines a Wireless Network with
+// SSOD, AP Mac Address, operation frequency, and signal strength
 type WirelessNetwork struct {
-	SSID	string		`json:"ssid"`
-	MAC		string	
-	freq	string		`json:"freq"`
-	signal	float32		`json:"signal"`
-	country	string		`json:"country"`
+	SSID   string
+	MAC    string
+	freq   string
+	signal float32
 }
 
-
-type conf_influxdb struct {
-	host			string
-	port			string
-	username		string
-	password		string
-	database		string	
-	measurement		string
+type influxdbConf struct {
+	host            string
+	port            string
+	username        string
+	password        string
+	database        string
+	measurement     string
 	retentionPolicy string
 }
 
-
+// Configuration file
 type Configuration struct {
-	probe_hostname string
-	wlan_interface string
-	conf_influxdb
+	probeHostname string
+	wlanInterface string
+	influxdbConf
 }
-
 
 func handleError(err error) {
 	if err != nil {
-		
+		log.Println("Error!")
 	}
 }
 
+// ScanWiFi function scan wireless network using iw
+// and return list of WirelessNetwork
+func ScanWiFi(wlanInterface string) []WirelessNetwork {
+	WiFiList := make([]WirelessNetwork, 0, 100)
 
-func ScanWiFi(wlan_interface string) []WirelessNetwork {
-	WiFiList := make([]WirelessNetwork,0,100);
+	log.Println("Scanning Wireless Network on " + wlanInterface)
 
-	log.Println("Scanning Wireless Network on " + wlan_interface)
-
-	args := "iw " + wlan_interface + " scan | grep -e 'SSID:\\|signal\\|freq:\\|BSS [a-f0-9]'"
-	cmd := exec.Command("/bin/bash", "-c", args) 
+	args := "iw " + wlanInterface + " scan | grep -e 'SSID:\\|signal\\|freq:\\|BSS [a-f0-9]'"
+	cmd := exec.Command("/bin/bash", "-c", args)
 	stdout, err := cmd.StdoutPipe()
 
 	handleError(err)
@@ -70,7 +71,7 @@ func ScanWiFi(wlan_interface string) []WirelessNetwork {
 	cmd.Start()
 
 	var line = 1
-	var signalStr float64 = 0.0
+	var signalStr float64
 	var freq string
 	var MAC string
 
@@ -92,8 +93,8 @@ func ScanWiFi(wlan_interface string) []WirelessNetwork {
 					SSID += v
 				}
 			}
-			WiFiList = append(WiFiList, WirelessNetwork{SSID: SSID, 
-				MAC: MAC, signal: float32(signalStr) ,freq:freq})
+			WiFiList = append(WiFiList, WirelessNetwork{SSID: SSID,
+				MAC: MAC, signal: float32(signalStr), freq: freq})
 		case 1:
 			MAC = bufField[1][:17]
 		case 2:
@@ -105,16 +106,15 @@ func ScanWiFi(wlan_interface string) []WirelessNetwork {
 		}
 
 		line++
-		
-	}
-	
-	return WiFiList
-} 
 
+	}
+
+	return WiFiList
+}
 
 func loadConfig() Configuration {
-	viper.SetConfigName(CONFIG_FILE)
-	viper.AddConfigPath(CONFIG_PATH)
+	viper.SetConfigName(ConfigFile)
+	viper.AddConfigPath(ConfigPath)
 	err := viper.ReadInConfig()
 	//add panic later
 	handleError(err)
@@ -123,30 +123,30 @@ func loadConfig() Configuration {
 		log.Println("Config file changed: ", e.Name)
 	})
 	viper.SetConfigType("yaml")
-	
-	thisHost := ""
-	wlan_interface := ""
 
-	if (viper.GetString("probeNode.hostname") == "") {
+	thisHost := ""
+	wlanInterface := ""
+
+	if viper.GetString("probeNode.hostname") == "" {
 		thisHost, err = os.Hostname()
 		handleError(err)
 	} else {
-		thisHost = viper.GetString("probeNode.hostname") 
-	} 
+		thisHost = viper.GetString("probeNode.hostname")
+	}
 
-	if (viper.GetString("probeNode.wlan_interface") == "") {
-		wlan_name, err := exec.Command("/bin/bash", "-c", 
+	if viper.GetString("probeNode.wlanInterface") == "" {
+		wlanName, err := exec.Command("/bin/bash", "-c",
 			"cat /proc/net/wireless | sed -n '3p' | grep -Eo '^[a-z0-9 ]+' | tr -d '\n'").Output()
 		handleError(err)
-		wlan_interface = string(wlan_name)[:]
+		wlanInterface = string(wlanName)[:]
 	} else {
-		wlan_interface = viper.GetString("probeNode.wlan_interface") 
-	} 
+		wlanInterface = viper.GetString("probeNode.wlan_interface")
+	}
 
 	return Configuration{
-		probe_hostname: thisHost,
-		wlan_interface: wlan_interface,
-		conf_influxdb: conf_influxdb {
+		probeHostname: thisHost,
+		wlanInterface: wlanInterface,
+		influxdbConf: influxdbConf{
 			viper.GetString("influxdb.host"),
 			viper.GetString("influxdb.port"),
 			viper.GetString("influxdb.username"),
@@ -158,32 +158,31 @@ func loadConfig() Configuration {
 	}
 }
 
-
 func writeInfluxDB(clnt client.Client, config Configuration, WiFi WirelessNetwork) {
-	//Load config 
-	dbname := config.conf_influxdb.database
-	retentionPolicy := config.conf_influxdb.retentionPolicy
-	measurement := config.conf_influxdb.measurement
+	//Load config
+	dbname := config.influxdbConf.database
+	retentionPolicy := config.influxdbConf.retentionPolicy
+	measurement := config.influxdbConf.measurement
 	// write data to database
-	bp, err := client.NewBatchPoints(client.BatchPointsConfig {
-		Database: dbname,
-		Precision: "s",
+	bp, err := client.NewBatchPoints(client.BatchPointsConfig{
+		Database:        dbname,
+		Precision:       "s",
 		RetentionPolicy: retentionPolicy,
 	})
 
 	handleError(err)
-	
+
 	data := map[string]interface{}{
-		"Signal": WiFi.signal, 
-	}
-	
-	tags := map[string]string {
-		"SSID": WiFi.SSID,
-		"MAC Address": WiFi.MAC,
-		"Frequency": WiFi.freq,
+		"Signal": WiFi.signal,
 	}
 
-	pt,err := client.NewPoint(measurement, tags, data, time.Now())
+	tags := map[string]string{
+		"SSID":        WiFi.SSID,
+		"MAC Address": WiFi.MAC,
+		"Frequency":   WiFi.freq,
+	}
+
+	pt, err := client.NewPoint(measurement, tags, data, time.Now())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -195,7 +194,6 @@ func writeInfluxDB(clnt client.Client, config Configuration, WiFi WirelessNetwor
 	}
 }
 
-
 func main() {
 	//Catch signal
 	sig := make(chan os.Signal, 1)
@@ -204,31 +202,30 @@ func main() {
 		s := <-sig
 		log.Printf("RECEIVED SIGNAL: %s", s)
 		os.Exit(1)
-	} ()
+	}()
 	/*Start Program
-	*/
+	 */
 	//Load config file
 	config := loadConfig()
-	dbaddr := config.conf_influxdb.host + ":" + config.conf_influxdb.port
-	dbusername := config.conf_influxdb.username
-	dbpassword := config.conf_influxdb.password
-	wlan_interface := config.wlan_interface
+	dbaddr := config.influxdbConf.host + ":" + config.influxdbConf.port
+	dbusername := config.influxdbConf.username
+	dbpassword := config.influxdbConf.password
+	wlanInterface := config.wlanInterface
 
 	//Create a new HTTP client sending request to InfluxDB
 	clnt, err := client.NewHTTPClient(client.HTTPConfig{
-		Addr:		dbaddr,
-		Username:	dbusername, 	
-		Password:	dbpassword,
-
+		Addr:     dbaddr,
+		Username: dbusername,
+		Password: dbpassword,
 	})
 
 	handleError(err)
 
 	for {
-		WiFiList := ScanWiFi(wlan_interface)
+		WiFiList := ScanWiFi(wlanInterface)
 		for _, WiFi := range WiFiList {
 			log.Println(WiFi)
-			writeInfluxDB(clnt,config,WiFi)
+			writeInfluxDB(clnt, config, WiFi)
 		}
 	}
 }

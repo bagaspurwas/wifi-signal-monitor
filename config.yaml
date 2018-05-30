@@ -3,7 +3,7 @@
 # Otherwise, the specified one used.
 probeNode:
   hostname: ""
-  wlan_interface: ""
+  wlanInterface: ""
 influxdb:
   host: "http://127.0.0.1"
   port: "8086"
