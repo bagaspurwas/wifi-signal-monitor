@@ -1,5 +1,9 @@
+# If hostname or wlan_interface not specified,
+# the program will automatically retrieve them.
+# Otherwise, the specified one used.
 probeNode:
   hostname: ""
+  wlan_interface: ""
 influxdb:
   host: "http://127.0.0.1"
   port: "8086"

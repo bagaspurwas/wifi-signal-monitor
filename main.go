@@ -44,6 +44,7 @@ type conf_influxdb struct {
 
 type Configuration struct {
 	probe_hostname string
+	wlan_interface string
 	conf_influxdb
 }
 
@@ -55,13 +56,15 @@ func handleError(err error) {
 }
 
 
-func ScanWiFi() []WirelessNetwork {
+func ScanWiFi(wlan_interface string) []WirelessNetwork {
 	WiFiList := make([]WirelessNetwork,0,100);
-	log.Println("Scanning Wireless Network")
-	//args := []string("scan", "wlp3s0")
-	cmd := exec.Command("/bin/bash", "-c", 
-		"iw wlp3s0 scan | grep -e 'SSID:\\|signal\\|freq:\\|BSS [a-f0-9]'") 
+
+	log.Println("Scanning Wireless Network on " + wlan_interface)
+
+	args := "iw " + wlan_interface + " scan | grep -e 'SSID:\\|signal\\|freq:\\|BSS [a-f0-9]'"
+	cmd := exec.Command("/bin/bash", "-c", args) 
 	stdout, err := cmd.StdoutPipe()
+
 	handleError(err)
 
 	cmd.Start()
@@ -122,16 +125,27 @@ func loadConfig() Configuration {
 	viper.SetConfigType("yaml")
 	
 	thisHost := ""
+	wlan_interface := ""
 
 	if (viper.GetString("probeNode.hostname") == "") {
 		thisHost, err = os.Hostname()
 		handleError(err)
 	} else {
 		thisHost = viper.GetString("probeNode.hostname") 
-	}
+	} 
+
+	if (viper.GetString("probeNode.wlan_interface") == "") {
+		wlan_name, err := exec.Command("/bin/bash", "-c", 
+			"cat /proc/net/wireless | sed -n '3p' | grep -Eo '^[a-z0-9 ]+' | tr -d '\n'").Output()
+		handleError(err)
+		wlan_interface = string(wlan_name)[:]
+	} else {
+		wlan_interface = viper.GetString("probeNode.wlan_interface") 
+	} 
 
 	return Configuration{
-		probe_hostname : thisHost,
+		probe_hostname: thisHost,
+		wlan_interface: wlan_interface,
 		conf_influxdb: conf_influxdb {
 			viper.GetString("influxdb.host"),
 			viper.GetString("influxdb.port"),
@@ -198,6 +212,8 @@ func main() {
 	dbaddr := config.conf_influxdb.host + ":" + config.conf_influxdb.port
 	dbusername := config.conf_influxdb.username
 	dbpassword := config.conf_influxdb.password
+	wlan_interface := config.wlan_interface
+
 	//Create a new HTTP client sending request to InfluxDB
 	clnt, err := client.NewHTTPClient(client.HTTPConfig{
 		Addr:		dbaddr,
@@ -209,7 +225,7 @@ func main() {
 	handleError(err)
 
 	for {
-		WiFiList := ScanWiFi()
+		WiFiList := ScanWiFi(wlan_interface)
 		for _, WiFi := range WiFiList {
 			log.Println(WiFi)
 			writeInfluxDB(clnt,config,WiFi)

@@ -1,38 +1,18 @@
 #/bin/bash
 
-#Collect parameter and Build a configuration file
-POSITIONAL=()
-while [[ $# -gt 0]]
-do
-key="$1"
-
-case $key in
-    -d| --db-hostname)
-    DBHOSTNAME="$2"
-    shift
-    shift
-    ;;
-    -p| --db-port)
-    DBPORT="$2"
-    shift
-    shift
-    ;;
-    -u| --db-user)
-    DBUSER="$2"
-    shift
-    shift;;
-esac
-done
-
 #Retrieve current dir
 $thisdir = "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 #Preparing
 mkdir /etc/wifimonitor
 mv $thisdir/config.yaml /etc/wifimonitor/
-#Build golang programwifimonitor
-export GOPATH = $GOPATH:$thisdir
-go install wifimonitor
+cp -r ../wifimonitor $GOPATH/src/
 
+#Build golang programwifimonitor
+go install wifimonitor
+mv $GOPATH/bin/wifimonitor /usr/local/bin/
+
+#Create systemd service instance
 cat << 'EOF' > wifimonitor.service
 [Unit]
 Description= Service to parse wifi signal stregth to InfluxDB
@@ -44,8 +24,7 @@ Group=root
 Restart=on-failure
 RestartSec=10
 
-ExecStart=/usr/lib/bin/wifimonitor
-
+ExecStart=/usr/local/bin/wifimonitor
 
 ExecStartPre=/bin/mkdir -p /var/log/wifimonitor
 ExecStartPre=/bin/chown syslog:adm /var/log/wifimonitor
@@ -53,7 +32,12 @@ ExecStartPre=/bin/chmod 755 /var/log/wifimonitor
 StandardOutput=syslog
 StandardError=syslog
 SyslogIdentifier=wifimonitor
-
+tr -d '\n'
 [Install]
 WantedBy=multi-user.target
 EOF
+
+mv wifimonitor.service /etc/systemd/system/
+
+systemctl enable wifimonitor.service
+systemctl start wifimonitor.service
