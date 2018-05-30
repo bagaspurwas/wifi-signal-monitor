@@ -24,11 +24,13 @@ case $key in
 esac
 done
 
-#
+#Retrieve current dir
 $thisdir = "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-
-#Build golang program
-export GOPATH = $thisdir
+#Preparing
+mkdir /etc/wifimonitor
+mv $thisdir/config.yaml /etc/wifimonitor/
+#Build golang programwifimonitor
+export GOPATH = $GOPATH:$thisdir
 go install wifimonitor
 
 cat << 'EOF' > wifimonitor.service

@@ -6,4 +6,5 @@ influxdb:
   username: "root"
   password: "root"
   database: "wifimonitor"
+  measurement: "SIGNALSTR"
   retentionPolicy: "onehour"
