@@ -1,4 +1,4 @@
-# If uniqueID or wlan_interface not specified,
+# If hostname or wlan_interface not specified,
 # the program will automatically retrieve them.
 # Otherwise, the specified one used.
 probeNode:

@@ -1,12 +1,20 @@
 #/bin/bash
 
 #Retrieve current dir
-$thisdir = "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+$pwd = "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+#Install Go if it is not installed already
+if [ -z "which go 2> /dev/null"]; then
+    curl -LO https://github.com/hypriot/golang-armbuilds/releases/download/v1.7.4/go1.7.4.linux-arm64.tar.gz
+    tar -xvzf go1.7.4.linux-arm64.tar.gz -C /usr/local
+    export PATH=/usr/local/go/bin:$PATH
+    echo PATH="/usr/local/go/bin:$PATH" >> ~/.bashrc
 
 #Preparing
 mkdir /etc/wifimonitor
-mv $thisdir/config.yaml /etc/wifimonitor/
-cp -r ../wifimonitor $GOPATH/src/
+mkdir $GOPATH/src/wifimonitor
+mv $pwd/config.yaml /etc/wifimonitor/
+cp $pwd/main.go $GOPATH/src/wifimonitor
 
 #Build golang programwifimonitor
 go install wifimonitor
@@ -37,7 +45,9 @@ tr -d '\n'
 WantedBy=multi-user.target
 EOF
 
+# Move service to /etc/systemd/system so that
+# it is discovered as systemd service
 mv wifimonitor.service /etc/systemd/system/
 
-systemctl enable wifimonitor.service
 systemctl start wifimonitor.service
+systemctl enable wifimonitor.service

@@ -20,7 +20,7 @@ const (
 	//ConfigFile name without extension
 	ConfigFile = "config"
 	//ConfigPath absolute
-	ConfigPath = "/home/bapung/Documents/+Project/WiFiSSIDMonitor"
+	ConfigPath = "/etc/wifimonitor/"
 )
 
 // WirelessNetwork defines a Wireless Network with
@@ -44,8 +44,10 @@ type influxdbConf struct {
 
 // Configuration file
 type Configuration struct {
-	probeHostname string
+	uniqueID      string
 	wlanInterface string
+	location      string
+	threads       int
 	influxdbConf
 }
 
@@ -126,12 +128,12 @@ func loadConfig() Configuration {
 
 	thisHost := ""
 	wlanInterface := ""
-
-	if viper.GetString("probeNode.hostname") == "" {
+	//If uniqueID is not defined, use hostname instead
+	if viper.GetString("probeNode.uniqueID") == "" {
 		thisHost, err = os.Hostname()
 		handleError(err)
 	} else {
-		thisHost = viper.GetString("probeNode.hostname")
+		thisHost = viper.GetString("probeNode.uniqueID")
 	}
 
 	if viper.GetString("probeNode.wlanInterface") == "" {
@@ -140,12 +142,14 @@ func loadConfig() Configuration {
 		handleError(err)
 		wlanInterface = string(wlanName)[:]
 	} else {
-		wlanInterface = viper.GetString("probeNode.wlan_interface")
+		wlanInterface = viper.GetString("probeNode.wlanInterface")
 	}
 
 	return Configuration{
-		probeHostname: thisHost,
+		uniqueID:      thisHost,
 		wlanInterface: wlanInterface,
+		location:      viper.GetString("probNode.location"),
+		threads:       viper.GetInt("probeNode.threaads"),
 		influxdbConf: influxdbConf{
 			viper.GetString("influxdb.host"),
 			viper.GetString("influxdb.port"),
@@ -163,6 +167,8 @@ func writeInfluxDB(clnt client.Client, config Configuration, WiFi WirelessNetwor
 	dbname := config.influxdbConf.database
 	retentionPolicy := config.influxdbConf.retentionPolicy
 	measurement := config.influxdbConf.measurement
+	uniqueID := config.uniqueID
+	location := config.location
 	// write data to database
 	bp, err := client.NewBatchPoints(client.BatchPointsConfig{
 		Database:        dbname,
@@ -177,9 +183,11 @@ func writeInfluxDB(clnt client.Client, config Configuration, WiFi WirelessNetwor
 	}
 
 	tags := map[string]string{
+		"Hostname":    uniqueID,
 		"SSID":        WiFi.SSID,
 		"MAC Address": WiFi.MAC,
 		"Frequency":   WiFi.freq,
+		"Location":    location,
 	}
 
 	pt, err := client.NewPoint(measurement, tags, data, time.Now())
@@ -211,7 +219,10 @@ func main() {
 	dbusername := config.influxdbConf.username
 	dbpassword := config.influxdbConf.password
 	wlanInterface := config.wlanInterface
-
+	//threads := config.threads
+	log.Println(time.Now())
+	log.Println("Starting InfluxDB Client...")
+	log.Println("InfluxDB Server at " + dbaddr)
 	//Create a new HTTP client sending request to InfluxDB
 	clnt, err := client.NewHTTPClient(client.HTTPConfig{
 		Addr:     dbaddr,
@@ -223,6 +234,7 @@ func main() {
 
 	for {
 		WiFiList := ScanWiFi(wlanInterface)
+		//Add
 		for _, WiFi := range WiFiList {
 			log.Println(WiFi)
 			writeInfluxDB(clnt, config, WiFi)
