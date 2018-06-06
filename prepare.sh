@@ -1,17 +1,25 @@
 #/bin/sh
 
-#Retrieve current dir
+# Raspberry Pi Deployment ONLY
+# This file should be placed on crontab as root
+# The function is to make sure that each node run on unique identified name
+# and Raspberry Pi connect to desired Wireless SSID
+
+# Retrieve current dir
 WD=$(pwd)
 
 DMICECODE="/usr/sbin/dmidecode"
 
-#WIFI PARAM
-DEFAULT_SSID="BukaEmas (EP)"
+# WiFi 
+# Don't forget to edit
+
+DEFAULT_SSID=""
 DEFAULT_PSK=""
-DEFAULT_PASSPHRASE="bukalapak8e812018"
+DEFAULT_PASSPHRASE=""
 WPA_SUPPLICANT_FILE="/etc/wpa_supplicant/wpa_supplicant.conf"
 
 #WiFi config location
+
 CONFIG_YAML="/etc/wifimon/config.yaml"
 
 #Setup WiFi
