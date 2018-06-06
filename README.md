@@ -17,9 +17,21 @@ github.com/golang/go
 ```
 
 ### Installing
+
+Installing manually for testing is simple.
+Place all file on your gopath/src as follow
 ```
-to be added
+cd $GOPATH/src
+git clone https://github.com/bagaspurwas/wifi-signal-monitor
 ```
+get all dependencies and install using go install
+```
+go install wifi-signal-monitor-master
+```
+The executable can be found in $GOPATH/bin as usual
+
+Note : I have a ready-to go image, but only for a company i am working for. The only thing to do is burn to raspberry pi microSD card and ready to go.
+The image for universal use would be provided here later.
 
 ### Example Usage
 I quickly deploy influxdb and grafana on top of docker to see this program in action. Link to github: https://github.com/philhawthorne/docker-influxdb-grafana
@@ -37,4 +49,5 @@ SELECT "Signal" FROM "onehour"."SIGNALSTR" WHERE $timeFilter GROUP BY "MAC Addre
 Please note that retention policy, measurement unit can vary, please edit to your liking in configuration file.
 
 This is the result displayed on Grafana
+
 ![alt text](http://i63.tinypic.com/29d6yr5.png)
