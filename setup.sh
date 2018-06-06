@@ -1,53 +1,53 @@
-#/bin/bash
+#/bin/sh
 
 #Retrieve current dir
-$pwd = "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+WD=$(pwd)
 
-#Install Go if it is not installed already
-if [ -z "which go 2> /dev/null"]; then
-    curl -LO https://github.com/hypriot/golang-armbuilds/releases/download/v1.7.4/go1.7.4.linux-arm64.tar.gz
-    tar -xvzf go1.7.4.linux-arm64.tar.gz -C /usr/local
-    export PATH=/usr/local/go/bin:$PATH
-    echo PATH="/usr/local/go/bin:$PATH" >> ~/.bashrc
+DMICECODE="/usr/sbin/dmidecode"
 
-#Preparing
-mkdir /etc/wifimonitor
-mkdir $GOPATH/src/wifimonitor
-mv $pwd/config.yaml /etc/wifimonitor/
-cp $pwd/main.go $GOPATH/src/wifimonitor
+#WIFI PARAM
+DEFAULT_SSID="BukaEmas (EP)"
+DEFAULT_PSK=""
+DEFAULT_PASSPHRASE="bukalapak8e812018"
+WPA_SUPPLICANT_FILE="/etc/wpa_supplicant/wpa_supplicant.conf"
 
-#Build golang programwifimonitor
-go install wifimonitor
-mv $GOPATH/bin/wifimonitor /usr/local/bin/
+#WiFi config location
+CONFIG_YAML="/etc/wifimon/config.yaml"
 
-#Create systemd service instance
-cat << 'EOF' > wifimonitor.service
-[Unit]
-Description= Service to parse wifi signal stregth to InfluxDB
+#Setup WiFi
+if [ ! -f /etc/network/interfaces.d/wlan0 ]; then
+cat << EOT > /etc/network/interfaces.d/wlan0
+allow-hotplug wlan0
+iface wlan0 inet dhcp
+wpa-conf /etc/wpa_supplicant/wpa_supplicant.conf
+iface default inet dhcp
+EOT
+fi
 
-[Service]
-Type=
-User=root
-Group=root
-Restart=on-failure
-RestartSec=10
+#Create wpa_supplicant configuration file
+#if it is not exist or SSID and PASSPHRASE are mismatch
 
-ExecStart=/usr/local/bin/wifimonitor
+if [ ! -f $WPA_SUPPLICANT_FILE ] || [ -z $(cat $WPA_SUPPLICANT_FILE | grep -E '$DEFAULT_SSID.*$DEFAULT_PASSPHRASE') ]; then
+    wpa_passphrase "$DEFAULT_SSID" "$DEFAULT_PASSPHRASE" > $WPA_SUPPLICANT_FILE   
+fi
 
-ExecStartPre=/bin/mkdir -p /var/log/wifimonitor
-ExecStartPre=/bin/chown syslog:adm /var/log/wifimonitor
-ExecStartPre=/bin/chmod 755 /var/log/wifimonitor
-StandardOutput=syslog
-StandardError=syslog
-SyslogIdentifier=wifimonitor
-tr -d '\n'
-[Install]
-WantedBy=multi-user.target
-EOF
 
-# Move service to /etc/systemd/system so that
-# it is discovered as systemd service
-mv wifimonitor.service /etc/systemd/system/
+#ENABLE SSH
+touch /boot/ssh
 
-systemctl start wifimonitor.service
-systemctl enable wifimonitor.service
+# Generate Unique Number
+# Use dmidecode to get serial number, ip to get mac address
+# and blkid to get UUID and hash three of them using sha256
+
+UNIQUE_ID=$(echo $(sudo dmidecode -t 4 | grep ID | sed 's/.*ID://;s/ //g') \
+     $(ip a | grep "ether" | awk -F " " '{print $2, $8}' | head -n 1 | sed 's/://g') \
+     $(blkid | grep -oP 'UUID="\K[^"]+' | sha256sum | awk '{print $1}') | sha256sum |
+     awk '{print $1}')
+
+echo $UNIQUE_ID
+
+#Modify Configuration File
+if [ -f $CONFIG_YAML ] && [ ! -z cat $CONFIG_YAML | grep 'uniqueID: ""' ]; then
+	sed -re 's/(uniqueID: ")[^=]/\1'"$UNIQUE_ID"'\"/' -i $CONFIG_YAML
+fi
+

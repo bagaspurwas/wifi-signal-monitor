@@ -10,7 +10,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
 	"github.com/fsnotify/fsnotify"
 	"github.com/influxdata/influxdb/client/v2"
 	"github.com/spf13/viper"
@@ -20,7 +19,7 @@ const (
 	//ConfigFile name without extension
 	ConfigFile = "config"
 	//ConfigPath absolute
-	ConfigPath = "/etc/wifimonitor/"
+	ConfigPath = "/etc/wifimon/"
 )
 
 // WirelessNetwork defines a Wireless Network with
@@ -115,6 +114,12 @@ func ScanWiFi(wlanInterface string) []WirelessNetwork {
 }
 
 func loadConfig() Configuration {
+    ConfigFileFull := ConfigPath + ConfigFile + ".yaml"
+    log.Println("Config Located in ", ConfigFileFull)
+    if _, err := os.Stat(ConfigFileFull); os.IsNotExist(err) {
+        log.Println("Config file not exist. Exiting...")
+        os.Exit(1)
+    }
 	viper.SetConfigName(ConfigFile)
 	viper.AddConfigPath(ConfigPath)
 	err := viper.ReadInConfig()
@@ -183,7 +188,7 @@ func writeInfluxDB(clnt client.Client, config Configuration, WiFi WirelessNetwor
 	}
 
 	tags := map[string]string{
-		"Hostname":    uniqueID,
+		"UniqueID":    uniqueID,
 		"SSID":        WiFi.SSID,
 		"MAC Address": WiFi.MAC,
 		"Frequency":   WiFi.freq,
@@ -236,7 +241,6 @@ func main() {
 		WiFiList := ScanWiFi(wlanInterface)
 		//Add
 		for _, WiFi := range WiFiList {
-			log.Println(WiFi)
 			writeInfluxDB(clnt, config, WiFi)
 		}
 	}
