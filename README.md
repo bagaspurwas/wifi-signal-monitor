@@ -11,8 +11,7 @@ Of course other use cases are possible.
 ```
 github.com/influxdata/influxdb
 ```
-- Golang
-Golang is mandatory to build this program.
+- Golang is mandatory to build this program.
 ```
 github.com/golang/go
 ```
@@ -41,6 +40,8 @@ This is an example on how to use this program in Raspberry Pi
 ```
 chmod +x ./setup.sh
 ./setup.sh
+## to install without golang (using prebuild binary) use:
+./setup.sh precompiled
 ```
 - Enable prepare.sh on start up to keep every Raspberry Pi posses a unique id.
 ```
