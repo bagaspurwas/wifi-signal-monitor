@@ -3,6 +3,7 @@
 # Otherwise, the specified one used.
 probeNode:
   uniqueID: ""
+  alias: "RasPi"
   wlanInterface: ""
   location: "Ruang Test 1"
   threads: 4

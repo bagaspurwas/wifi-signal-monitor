@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
 	"github.com/fsnotify/fsnotify"
 	"github.com/influxdata/influxdb/client/v2"
 	"github.com/spf13/viper"
@@ -25,10 +26,11 @@ const (
 // WirelessNetwork defines a Wireless Network with
 // SSOD, AP Mac Address, operation frequency, and signal strength
 type WirelessNetwork struct {
-	SSID   string
-	MAC    string
-	freq   string
-	signal float32
+	SSID     string
+	MAC      string
+	freq     string
+	signal   float32
+	Security string
 }
 
 type influxdbConf struct {
@@ -44,6 +46,7 @@ type influxdbConf struct {
 // Configuration file
 type Configuration struct {
 	uniqueID      string
+	alias         string
 	wlanInterface string
 	location      string
 	threads       int
@@ -63,7 +66,7 @@ func ScanWiFi(wlanInterface string) []WirelessNetwork {
 
 	log.Println("Scanning Wireless Network on " + wlanInterface)
 
-	args := "iw " + wlanInterface + " scan | grep -e 'SSID:\\|signal\\|freq:\\|BSS [a-f0-9]'"
+	args := "iw " + wlanInterface + " scan | grep -e 'SSID:\\|signal\\|freq:\\|BSS [a-f0-9]\\|RSN\\|WPA\\|Privacy'"
 	cmd := exec.Command("/bin/bash", "-c", args)
 	stdout, err := cmd.StdoutPipe()
 
@@ -71,55 +74,66 @@ func ScanWiFi(wlanInterface string) []WirelessNetwork {
 
 	cmd.Start()
 
-	var line = 1
+	var MAC = ""
+	var SSID string
 	var signalStr float64
 	var freq string
-	var MAC string
+	var Security string
 
 	buffer := bufio.NewScanner(stdout)
 	buffer.Split(bufio.ScanLines)
 
 	for buffer.Scan() {
 		bufField := strings.Fields(buffer.Text())
-		//Iterate through the line and add corresponding line
-		// to WiFiList param
-
-		switch line % 4 {
-		case 0:
-			SSID := ""
-			if len(bufField) == 1 {
-				SSID = ""
-			} else {
+		// Check SSID
+		if strings.HasPrefix(bufField[0], "BSS") {
+			if MAC != "" {
+				WiFiList = append(WiFiList, WirelessNetwork{SSID: SSID,
+					MAC: MAC, signal: float32(signalStr), freq: freq, Security: Security})
+			}
+			//Init variables as New MAC is found
+			MAC = bufField[1][:17]
+			SSID = ""
+			signalStr = -999.99
+			freq = ""
+			Security = "Open"
+			// GET SSID
+		} else if strings.HasPrefix(bufField[0], "SSID") {
+			if len(bufField) > 1 {
 				for _, v := range bufField[1:] {
-					SSID += v
+					SSID += " " + v
 				}
 			}
-			WiFiList = append(WiFiList, WirelessNetwork{SSID: SSID,
-				MAC: MAC, signal: float32(signalStr), freq: freq})
-		case 1:
-			MAC = bufField[1][:17]
-		case 2:
+			// Get Frequency
+		} else if strings.HasPrefix(bufField[0], "freq") {
 			freq = bufField[1]
-
-		case 3:
-			signalStr, err = strconv.ParseFloat(bufField[1], 32)
-			handleError(err)
+			// Get signal strength
+		} else if strings.HasPrefix(bufField[0], "signal") {
+			signalStr, _ = strconv.ParseFloat(bufField[1], 32)
+			// Get security types, reference:
+			// https://wiki.archlinux.org/index.php/Wireless_network_configuration#Discover_access_points
+		} else {
+			if (Security == "Open") && (strings.HasPrefix(bufField[0], "capability")) {
+				Security = "WEP"
+			}
+			if (Security != "WPA2") && (strings.HasPrefix(bufField[0], "WPA")) {
+				Security = "WPA"
+			}
+			if strings.HasPrefix(bufField[0], "RSN") {
+				Security = "WPA2"
+			}
 		}
-
-		line++
-
 	}
-
 	return WiFiList
 }
 
 func loadConfig() Configuration {
-    ConfigFileFull := ConfigPath + ConfigFile + ".yaml"
-    log.Println("Config Located in ", ConfigFileFull)
-    if _, err := os.Stat(ConfigFileFull); os.IsNotExist(err) {
-        log.Println("Config file not exist. Exiting...")
-        os.Exit(1)
-    }
+	ConfigFileFull := ConfigPath + ConfigFile + ".yaml"
+	log.Println("Config Located in ", ConfigFileFull)
+	if _, err := os.Stat(ConfigFileFull); os.IsNotExist(err) {
+		log.Println("Config file not exist. Exiting...")
+		os.Exit(1)
+	}
 	viper.SetConfigName(ConfigFile)
 	viper.AddConfigPath(ConfigPath)
 	err := viper.ReadInConfig()
@@ -152,8 +166,9 @@ func loadConfig() Configuration {
 
 	return Configuration{
 		uniqueID:      thisHost,
+		alias:         viper.GetString("probeNode.alias"),
 		wlanInterface: wlanInterface,
-		location:      viper.GetString("probNode.location"),
+		location:      viper.GetString("probeNode.location"),
 		threads:       viper.GetInt("probeNode.threaads"),
 		influxdbConf: influxdbConf{
 			viper.GetString("influxdb.host"),
@@ -173,6 +188,7 @@ func writeInfluxDB(clnt client.Client, config Configuration, WiFi WirelessNetwor
 	retentionPolicy := config.influxdbConf.retentionPolicy
 	measurement := config.influxdbConf.measurement
 	uniqueID := config.uniqueID
+	alias := config.alias
 	location := config.location
 	// write data to database
 	bp, err := client.NewBatchPoints(client.BatchPointsConfig{
@@ -189,9 +205,11 @@ func writeInfluxDB(clnt client.Client, config Configuration, WiFi WirelessNetwor
 
 	tags := map[string]string{
 		"UniqueID":    uniqueID,
+		"Alias":       alias,
 		"SSID":        WiFi.SSID,
 		"MAC Address": WiFi.MAC,
 		"Frequency":   WiFi.freq,
+		"Security":    WiFi.Security,
 		"Location":    location,
 	}
 
@@ -216,8 +234,7 @@ func main() {
 		log.Printf("RECEIVED SIGNAL: %s", s)
 		os.Exit(1)
 	}()
-	/*Start Program
-	 */
+	//Start Program
 	//Load config file
 	config := loadConfig()
 	dbaddr := config.influxdbConf.host + ":" + config.influxdbConf.port
@@ -244,4 +261,15 @@ func main() {
 			writeInfluxDB(clnt, config, WiFi)
 		}
 	}
+	/*
+		local database write rate: 12471371989 ns / 583 queries ~= 22 ms
+		ping from host to dbase -c 10 ~= 26.7 ms
+		Adding 3 sec polling rate
+		Data rate ~4.8 Kbytes/poll on BL ENG office
+		2.1 MB / 22 min = 97.75 KB / min; 1 min = 20 poll;
+
+		Full time monitoring -> ~ 161 MB/week / ~ 650 MB/month
+		Data stored on /var/lib/influxdb/wal/<db>/<retention policy>/875
+	*/
+	time.Sleep(3 * time.Second)
 }

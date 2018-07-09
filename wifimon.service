@@ -1,0 +1,21 @@
+[Unit]
+Description=Service to parse wifi signal strength to InfluxDB
+
+[Service]
+Type=idle
+User=root
+Group=root
+Restart=on-failure
+RestartSec=10
+
+ExecStart=/usr/local/bin/wifimon
+
+ExecStartPre=/bin/mkdir -p /var/log/wifimon
+ExecStartPre=/bin/chown root:root /var/log/wifimon
+ExecStartPre=/bin/chmod 755 /var/log/wifimon
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=wifimon
+
+[Install]
+WantedBy=multi-user.target
