@@ -1,17 +1,16 @@
-# If uniqueID or wlan_interface not specified,
-# the program will automatically retrieve them.
-# Otherwise, the specified one used.
+wireless:
+  SSID: asdsadfdsf
+  Passphrase: asdfdsfasfasfsdf
 probeNode:
-  uniqueID: ""
-  alias: "RasPi"
-  wlanInterface: ""
-  location: "Ruang Test 1"
-  threads: 4
+  uniqueID: asdf
+  alias: RasPi
+  wlanInterface: ''
+  location: Ruang Test 1
 influxdb:
-  host: "http://192.168.41.209"
-  port: "8086"
-  username: "root"
-  password: "root"
-  database: "bpg-wifimon-test"
-  measurement: "SIGNALSTR"
-  retentionPolicy: "onehour"
+  host: http://192.168.41.209
+  port: '8086'
+  username: root
+  password: root
+  database: bpg-wifimon-test
+  measurement: SIGNALSTR
+  retentionPolicy: onehour

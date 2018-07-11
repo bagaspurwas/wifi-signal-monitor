@@ -1,16 +1,26 @@
-#/bin/bash -x
+#/bin/sh
 
-#Retrieve current dir
+# Raspberry Pi Deployment ONLY
+# This file should be placed on crontab as root
+# The function is to make sure that each node run on unique identified name
+# and Raspberry Pi connect to desired Wireless SSID
+
+# Retrieve current dir
 WD=$(pwd)
 
-#WiFi config location
-CONFIG_YAML="/etc/wifimon/config.yaml"
+dmidecode = `which dmidecode`
 
-#WIFI PARAM
-DEFAULT_SSID= $(cat $CONFIG_YAML | grep SSID | awk '{for (i=2;i<=NF;++i)printf $i}')
+# WiFi
+# Don't forget to edit
+
+DEFAULT_SSID=""
 DEFAULT_PSK=""
-DEFAULT_PASSPHRASE=$(cat $CONFIG_YAML | grep Passphrase | awk '{for (i=2;i<=NF;++i)printf $i}')
+DEFAULT_PASSPHRASE=""
 WPA_SUPPLICANT_FILE="/etc/wpa_supplicant/wpa_supplicant.conf"
+
+#WiFi config location
+
+CONFIG_YAML="/etc/wifimon/config.yaml"
 
 #Setup WiFi
 if [ ! -f /etc/network/interfaces.d/wlan0 ]; then
@@ -34,10 +44,10 @@ fi
 touch /boot/ssh
 
 # Generate Unique Number
-# Use proc data to get serial number, ip to get mac address
+# Use dmidecode to get serial number, ip to get mac address
 # and blkid to get UUID and hash three of them using sha256
 
-UNIQUE_ID=$(echo $(cat /proc/cpuinfo | grep Serial | cut -d ' ' -f 2) \
+UNIQUE_ID=$(echo $($dmidecode -t 4 | grep ID | sed 's/.*ID://;s/ //g') \
      $(ip a | grep "ether" | awk -F " " '{print $2, $8}' | head -n 1 | sed 's/://g') \
      $(blkid | grep -oP 'UUID="\K[^"]+' | sha256sum | awk '{print $1}') | sha256sum |
      awk '{print $1}')
@@ -45,6 +55,6 @@ UNIQUE_ID=$(echo $(cat /proc/cpuinfo | grep Serial | cut -d ' ' -f 2) \
 echo $UNIQUE_ID
 
 #Modify Configuration File
-if [ -f $CONFIG_YAML ] && [ -z $(cat $CONFIG_YAML | grep $UNIQUE_ID) ]; then
+if [ -f $CONFIG_YAML ] && [ ! -z cat $CONFIG_YAML | grep 'uniqueID: ""' ]; then
 	sed -re 's/(uniqueID: ")[^=]/\1'"$UNIQUE_ID"'\"/' -i $CONFIG_YAML
 fi
