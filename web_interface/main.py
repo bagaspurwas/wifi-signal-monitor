@@ -1,11 +1,26 @@
-from flask import Flask, render_template, redirect
+from flask import Flask, render_template, redirect, session, request, abort, flash
 from flask import request as r
 import yaml
 import regex as re
+import os
 from collections import OrderedDict
 
 app = Flask(__name__)
-defaultPath = "/etc/wifimon/config.yaml"
+defaultPath = "../config.yaml"
+
+# Serialize yaml to ORderedDict, Python 3.6<
+# Replace yaml.dump(stream) to orderedLoad(stream, yaml.SafeLoader)
+
+def orderedLoad(stream, Loader=yaml.Loader, object_pairs_hook=OrderedDict):
+    class OrderedLoader(Loader):
+        pass
+    def construct_mapping(loader, node):
+        loader.flatten_mapping(node)
+        return object_pairs_hook(loader.construct_pairs(node))
+    OrderedLoader.add_constructor(
+        yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+        construct_mapping)
+    return yaml.load(stream, OrderedLoader)
 
 # Config class definition
 
@@ -29,7 +44,7 @@ class Configuration:
         try:
             with open(self.path, 'w') as yaml_config:
                 yaml.dump(config, yaml_config, default_flow_style=False)
-                cf.close()
+                yaml_config.close()
             return 1
         except:
             return 0
@@ -40,19 +55,35 @@ class Configuration:
 def redirectto():
     return redirect("/index.html")
 
+@app.route("/login", methods=['post'])
+def login():
+    if (request.form['password'] == 'password' and request.form['username'] == 'admin'):
+        session['logged_in'] = True
+    else:
+        flash('Wrong username or password!')
+    return redirect("index.html")
+
+@app.route("/logout")
+def logout():
+    session['logged_in'] = False
+    return defaultView()
+
 @app.route("/index.html", methods=['get'])
 def defaultView():
-    if r.method =='GET':
+    if (r.method =='GET' and session.get('logged_in')):
         config = Configuration()
         if not config.loadConfig():
             return "ERROR OPENING FILE"
         else:
-            return render_template("index.html", config=config.configdict)
+            ordconf = OrderedDict(config.configdict)
+            return render_template("index.html", config=ordconf)
+    else:
+        return render_template("login.html")
 
 @app.route("/index.html", methods=['post'])
 def pushChange():
-    config = Configuration()
-    if r.method=='POST':
+    if (r.method=='POST' and session.get('logged_in')):
+        config = Configuration()
         configDict = OrderedDict()
         configDict['wireless'] = OrderedDict([
             ('SSID', r.form.get('SSID')),
@@ -81,6 +112,9 @@ def pushChange():
             return "Config file updated"
         else:
             return "Something going wrong. Update not successful"
+    else:
+        return render_template("login.html")
 
 if __name__ == '__main__':
-   app.run(port=5000, debug = True)
+    app.secret_key = os.urandom(12)
+    app.run(port=5000, debug = True)

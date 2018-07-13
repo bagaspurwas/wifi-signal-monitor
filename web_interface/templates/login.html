@@ -1,0 +1,23 @@
+<head>
+  <link rel="stylesheet" type="text/css"
+   href="{{url_for('static', filename='spectre-0.5.3/dist/spectre.min.css')}}"/>
+</head>
+<body>
+    {% block body %}
+    {% if session['logged_in'] %}
+    <p>You're logged in already!</p>
+    {% else %}
+  <div class="container grid-md">
+    <div class="columns ">
+    <div class="column col-6 col-mx-auto">
+      <form action="/login" method="POST" id="loginform">
+        <input class="form-input" type="username" name="username" placeholder="Username">
+        <input class="form-input" type="password" name="password" placeholder="Password">
+      </form>
+      <button class="btn btn-primary input-group-btn"
+            type="submit" form="loginform" value="Submit">Submit</button>
+  </div>
+  </div>
+    {% endif %}
+    {% endblock %}
+  </body>
